@@ -1,0 +1,7 @@
+build/
+tmp/
+downloads/
+sstate-cache/
+
+.vscode/
+fuel-meter-app
