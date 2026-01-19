@@ -1,0 +1,10 @@
+[Unit]
+Description=fuel-meter Logic
+After=multi-user.target
+
+[Service]
+ExecStart=/usr/bin/fuel-meter-app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

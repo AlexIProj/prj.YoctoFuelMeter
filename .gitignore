@@ -2,8 +2,8 @@ build/
 tmp/
 downloads/
 sstate-cache/
-
+layers/*
 .vscode/
-fuel-meter-app
-
 Unit/*.txt
+
+!layers/fuel-meter/
