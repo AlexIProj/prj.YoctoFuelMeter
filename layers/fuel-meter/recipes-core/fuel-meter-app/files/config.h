@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 // ------------------ RASPBERRY PI ------------------
-#define GPIO_CHIP_PATH  "/dev/gpiochip4"
+#define GPIO_CHIP_PATH  "/dev/gpiochip0"
 #define SERIAL_PORT     "/dev/ttyACM0"
 #define PIN_SPEED_SEN   17
 #define PIN_FLOW_SEN    27

@@ -29,10 +29,21 @@ struct gpiod_line_request* ConfigLineInput(const char* chip_path, int offset, co
 
     struct gpiod_line_request* request = gpiod_chip_request_lines(chip, req_cfg, line_cfg);
 
+    if(!request) {
+        fprintf(stderr, "ERR: Failed to request line (Offset: %d) on chip %s\n", offset, chip_path);
+        perror("");
+        gpiod_chip_close(chip);
+        return NULL;
+    }
+
     gpiod_line_settings_free(settings);
     gpiod_line_config_free(line_cfg);
     gpiod_request_config_free(req_cfg);
     gpiod_chip_close(chip);
 
     return request;
+}
+
+int GPIOD_GetLineValue(struct gpiod_line_request* request, int offset){
+    return gpiod_line_request_get_value(request, offset);
 }

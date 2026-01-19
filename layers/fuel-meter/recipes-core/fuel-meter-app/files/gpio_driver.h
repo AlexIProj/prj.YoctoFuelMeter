@@ -4,5 +4,6 @@
 #include <gpiod.h>
 
 struct gpiod_line_request* ConfigLineInput(const char* chip_path, int offset, const char* consumer, int detect_edge);
+int GPIOD_GetLineValue(struct gpiod_line_request* request, int offset);
 
 #endif

@@ -18,6 +18,7 @@ RDEPENDS:${PN} = "libgpiod"
 
 inherit pkgconfig systemd
 SYSTEMD_SERVICE:${PN} = "fuel-meter.service"
+SYSTEMD_AUTO_ENABLE = "disable"
 
 do_compile() {
     ${CC} ${CFLAGS}  $(pkg-config --cflags libgpiod) \
