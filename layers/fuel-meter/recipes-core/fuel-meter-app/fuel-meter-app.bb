@@ -14,14 +14,14 @@ SRC_URI = "\
 S = "${WORKDIR}"
 
 DEPENDS = "libgpiod"
-RDEPENDS:${PN} = "libgpiod"
+RDEPENDS:${PN} = "libgpiod kernel-module-cdc-acm"
 
 inherit pkgconfig systemd
 SYSTEMD_SERVICE:${PN} = "fuel-meter.service"
-SYSTEMD_AUTO_ENABLE = "disable"
+SYSTEMD_AUTO_ENABLE = "enable"
 
 do_compile() {
-    ${CC} ${CFLAGS}  $(pkg-config --cflags libgpiod) \
+    ${CC} ${CFLAGS} -DDEBUG $(pkg-config --cflags libgpiod) \
     -o fuel-meter-app *.c  \
     ${LDFLAGS} $(pkg-config --libs libgpiod) -lpthread
 }

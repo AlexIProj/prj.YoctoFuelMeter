@@ -23,9 +23,9 @@ int SerialCom_Init(const char *device, int baudrate) {
     options.c_cflag &= ~PARENB;
     options.c_cflag &= ~CSTOPB;
     options.c_cflag &= ~CSIZE;
-    options.c_cflag |= CS8;
+    options.c_cflag |= CS8 | CLOCAL | CREAD;
 
-    options.c_lflag &=(ICANON | ECHO | ECHOE | ISIG);
+    options.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
     options.c_oflag &= ~OPOST;
 
     tcsetattr(serial_fd, TCSANOW, &options);
