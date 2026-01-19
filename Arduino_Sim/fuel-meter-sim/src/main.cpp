@@ -1,109 +1,171 @@
 #include <Arduino.h>
+#include "simulator.h"
+#include "lcd_display.h"
 
-/* ---------- PINOUT ---------- */
-const int PIN_SPEED_OUT = 9;
-const int PIN_FLOW_OUT  = 8;
+FuelSimulator simulator;
+DisplayLCD display;
 
-/* ---------- GLOBALS ---------- */
-long target_speed_hz = 0;
-long target_flow_hz  = 0;
+String serial_buffer = "";
+bool cmd_received = false;
 
-unsigned long prev_micros_speed = 0;
-unsigned long prev_micros_flow  = 0;
-bool state_speed = LOW;
-bool state_flow  = LOW;
+// ============================================================
+// SENSOR SPECIFICATIONS (from datasheet)
+// ============================================================
+#define SENSOR_SPEED_PULSES_PER_MILE  6000.0
+#define SENSOR_FLOW_PULSES_PER_CM3    12.0
 
-String input_string = "";
-bool string_complete = false;
+// Unit conversions
+#define KM_PER_MILE     1.609344
+#define CM3_PER_LITER   1000.0
 
-/* ---------- PROTOTYPES ---------- */
-void readSerialData(void);
-void parseCommand(String);
+// ============================================================
+// SIMULATION CONFIGURATION - SET REALISTIC VALUES HERE
+// ============================================================
+// Vehicle speed in km/h
+#define SIM_SPEED_KMH   80.0
+
+// Fuel flow rate in L/hour
+#define SIM_FLOW_LPH    20.0
+
+// Minimum frequency for stable readings (pulses per 200ms sample)
+#define MIN_PULSES_PER_SAMPLE  50
+
+// Button toggle interval (ms) - toggles metric/imperial
+#define BUTTON_TOGGLE_INTERVAL_MS 10000
+
+// ============================================================
+// AUTO-CALCULATED FREQUENCIES
+// ============================================================
+// Convert km/h to pulses/second:
+// speed_hz = (km/h) / (km/mile) * (pulses/mile) / 3600
+// speed_hz = (km/h) * (pulses/mile) / (km/mile) / 3600
+#define CALC_SPEED_HZ  ((SIM_SPEED_KMH / KM_PER_MILE) * SENSOR_SPEED_PULSES_PER_MILE / 3600.0)
+
+// Convert L/hour to pulses/second:
+// flow_hz = (L/h) * (cm3/L) * (pulses/cm3) / 3600
+#define CALC_FLOW_HZ   ((SIM_FLOW_LPH * CM3_PER_LITER * SENSOR_FLOW_PULSES_PER_CM3) / 3600.0)
+
+// Calculate scale factor to ensure minimum pulses per sample
+// Sample period is 200ms = 0.2s, so min_hz = MIN_PULSES_PER_SAMPLE / 0.2
+#define MIN_HZ_FOR_STABILITY  (MIN_PULSES_PER_SAMPLE / 0.2)
+
+// Scale factor: ensure the lower frequency meets minimum
+#define SCALE_FACTOR_SPEED  (CALC_SPEED_HZ < MIN_HZ_FOR_STABILITY ? (MIN_HZ_FOR_STABILITY / CALC_SPEED_HZ) : 1.0)
+#define SCALE_FACTOR_FLOW   (CALC_FLOW_HZ < MIN_HZ_FOR_STABILITY ? (MIN_HZ_FOR_STABILITY / CALC_FLOW_HZ) : 1.0)
+#define SCALE_FACTOR        (SCALE_FACTOR_SPEED > SCALE_FACTOR_FLOW ? SCALE_FACTOR_SPEED : SCALE_FACTOR_FLOW)
+
+// Final frequencies (scaled for stability, ratio preserved)
+// Use rounding instead of truncation to preserve ratio accuracy
+#define SIM_SPEED_HZ   ((long)(CALC_SPEED_HZ * SCALE_FACTOR + 0.5))
+#define SIM_FLOW_HZ    ((long)(CALC_FLOW_HZ * SCALE_FACTOR + 0.5))
+
+// Expected consumption calculation for verification
+// Consumption (L/100km) = (L/h) / (km/h) * 100
+#define EXPECTED_CONSUMPTION  ((SIM_FLOW_LPH / SIM_SPEED_KMH) * 100.0)
 
 void setup() {
-  Serial.begin(115200);
-  delay(100);
-  
-  input_string.reserve(200);
+    Serial.begin(115200);
+    serial_buffer.reserve(50);
 
-  pinMode(PIN_SPEED_OUT, OUTPUT);
-  pinMode(PIN_FLOW_OUT, OUTPUT);
+    simulator.Setup();
+    #ifdef LCD_ENABLED
+    Serial.println("[LCD] Initializing...");
+    display.Setup();
+    Serial.println("[LCD] Setup complete");
+    display.ShowChar(0, 'F', false);
+    display.ShowChar(1, 'U', false);
+    display.ShowChar(2, 'E', false);
+    display.ShowChar(3, 'L', false);
+    Serial.println("[LCD] Showing FUEL...");
+    display.Update();
+    Serial.println("[LCD] Update done, waiting 2s...");
+    delay(2000);
+    display.clear();
+    Serial.println("[LCD] Cleared");
+    #else
+    Serial.println("[LCD] DISABLED - LCD_ENABLED not defined");
+    #endif
 
-  digitalWrite(PIN_SPEED_OUT, LOW);
-  digitalWrite(PIN_FLOW_OUT, LOW);
+    // Start with configured values
+    String initCmd = "S" + String(SIM_SPEED_HZ) + "F" + String(SIM_FLOW_HZ);
+    simulator.ParseCommand(initCmd);
+
+    Serial.println("=================================");
+    Serial.println("FUEL METER SIMULATOR STARTED");
+    Serial.println("=================================");
+    Serial.println("Configuration:");
+    Serial.print("  Speed: "); Serial.print(SIM_SPEED_KMH); Serial.println(" km/h");
+    Serial.print("  Flow:  "); Serial.print(SIM_FLOW_LPH); Serial.println(" L/h");
+    Serial.print("  Expected consumption: "); Serial.print(EXPECTED_CONSUMPTION, 1); Serial.println(" L/100km");
+    Serial.println("Frequencies (auto-scaled for stability):");
+    Serial.print("  Speed: "); Serial.print(SIM_SPEED_HZ); Serial.println(" Hz");
+    Serial.print("  Flow:  "); Serial.print(SIM_FLOW_HZ); Serial.println(" Hz");
+    Serial.print("  Scale factor: "); Serial.println(SCALE_FACTOR, 1);
+    Serial.print("Button toggle every: "); Serial.print(BUTTON_TOGGLE_INTERVAL_MS/1000); Serial.println(" seconds");
+    Serial.println("=================================");
+}
+
+void updateDisplay(String input) {
+    input.trim();
+    if (input.length() < 2) return;
+
+    char unit = input.charAt(0);
+
+    // Validate unit character - must be 'L' or 'G'
+    if (unit != 'L' && unit != 'G') {
+        Serial.print("[RX] Invalid unit char: ");
+        Serial.println((int)unit);
+        return;
+    }
+
+    String valStr = input.substring(1);
+    float val = valStr.toFloat();
+
+    // Validate value range (0-99.9)
+    if (val < 0 || val > 99.9) {
+        Serial.print("[RX] Invalid value: ");
+        Serial.println(val);
+        return;
+    }
+
+    int tens = ((int)val / 10) % 10;
+    int ones = ((int)val) % 10;
+    int decimal = (int)(val * 10) % 10;
+
+    #ifdef LCD_ENABLED
+    display.ShowChar(0, unit, false);
+    display.ShowChar(1, (char)('0' + tens), false);
+    display.ShowChar(2, (char)('0' + ones), true);
+    display.ShowChar(3, (char)('0' + decimal), false);
+    display.Update();
+    #endif
 }
 
 void loop() {
-  unsigned long current_micros = micros();
+    simulator.Loop();
 
-  readSerialData();
+    // Auto button toggle every 10 seconds
+    simulator.UpdateAutoToggle(BUTTON_TOGGLE_INTERVAL_MS);
 
-  if (string_complete) {
-    parseCommand(input_string);
-    input_string = "";
-    string_complete = false;
-  }
-
-  /* Handle Speed Output */
-  if (target_speed_hz > 0) {
-    unsigned long interval_speed = 1000000UL / (target_speed_hz * 2);
-    
-    if (current_micros - prev_micros_speed >= interval_speed) {
-      prev_micros_speed = current_micros;
-      state_speed = !state_speed;
-      digitalWrite(PIN_SPEED_OUT, state_speed);
+    while (Serial.available()) {
+        char c = (char)Serial.read();
+        if (c == '\n') {
+            cmd_received = true;
+        } else if (c == '\r') {
+            // Ignore carriage return
+        } else if (c >= ' ' && c <= '~') {
+            // Only accept printable ASCII characters
+            serial_buffer += c;
+        }
     }
-  } else {
-    digitalWrite(PIN_SPEED_OUT, LOW);
-    state_speed = LOW;
-  }
 
-  /* Handle Flow Output */
-  if (target_flow_hz > 0) {
-    unsigned long interval_flow = 1000000UL / (target_flow_hz * 2);
-    
-    if (current_micros - prev_micros_flow >= interval_flow) {
-      prev_micros_flow = current_micros;
-      state_flow = !state_flow;
-      digitalWrite(PIN_FLOW_OUT, state_flow);
+    if (cmd_received) {
+        if (serial_buffer.length() > 0) {
+            Serial.print("[RX] Display cmd: ");
+            Serial.println(serial_buffer);
+            updateDisplay(serial_buffer);
+        }
+        serial_buffer = "";
+        cmd_received = false;
     }
-  } else {
-    digitalWrite(PIN_FLOW_OUT, LOW);
-    state_flow = LOW;
-  }
-}
-
-void readSerialData() {
-  while (Serial.available()) {
-    char c = (char)Serial.read();
-    if (c == '\n') {
-      string_complete = true;
-    } else {
-      if (c != '\r') {
-        input_string += c;
-      }
-    }
-  }
-}
-
-void parseCommand(String cmd) {
-  int s_index = cmd.indexOf("S");
-  int f_index = cmd.indexOf("F");
-
-  if (s_index != -1 && f_index != -1) {
-    String s_val = cmd.substring(s_index + 1, f_index);
-    String f_val = cmd.substring(f_index + 1);
-
-    long new_speed = s_val.toInt();
-    long new_flow  = f_val.toInt();
-
-    if (new_speed >= 0) target_speed_hz = new_speed;
-    if (new_flow >= 0)  target_flow_hz  = new_flow;
-  }
-
-  Serial.print("Set -> Speed: ");
-  Serial.print(target_speed_hz);
-  Serial.print(" Hz | Flow to: ");
-  Serial.print(target_flow_hz);
-  Serial.println(" Hz");
 }
