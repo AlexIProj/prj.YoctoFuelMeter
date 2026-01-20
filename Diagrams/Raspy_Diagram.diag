@@ -1,0 +1,71 @@
+actdiag {
+  init -> setup_signals -> init_gpio -> init_uart -> create_threads
+
+  create_threads -> wait_speed
+  create_threads -> wait_flow
+  create_threads -> read_button
+
+  wait_speed -> inc_speed -> wait_speed
+
+  wait_flow -> inc_flow -> wait_flow
+
+  read_button -> check_button
+
+  check_button -> toggle_mode [label = "pressed"]
+  check_button -> get_pulses [label = "not pressed"]
+  toggle_mode -> get_pulses
+
+  get_pulses -> calc_consumption -> apply_filter -> format_msg -> send_uart -> sleep -> read_button
+
+  init [label = "Start Application"]
+  setup_signals [label = "Setup Signal Handlers"]
+  init_gpio [label = "Initialize GPIO"]
+  init_uart [label = "Initialize UART"]
+  create_threads [label = "Create Threads"]
+
+  wait_speed [label = "Wait Speed Edge"]
+  inc_speed [label = "Increment Speed"]
+
+  wait_flow [label = "Wait Flow Edge"]
+  inc_flow [label = "Increment Flow"]
+
+  read_button [label = "Read Button"]
+  check_button [label = "Button Pressed?"]
+  toggle_mode [label = "Toggle Metric/Imperial"]
+  get_pulses [label = "Get Pulse Counts"]
+  calc_consumption [label = "Calculate Consumption"]
+  apply_filter [label = "Apply Filter"]
+  format_msg [label = "Format Message"]
+  send_uart [label = "Send to Arduino"]
+  sleep [label = "Sleep 200ms"]
+
+  lane main {
+    label = "Main Thread"
+    init
+    setup_signals
+    init_gpio
+    init_uart
+    create_threads
+    read_button
+    check_button
+    toggle_mode
+    get_pulses
+    calc_consumption
+    apply_filter
+    format_msg
+    send_uart
+    sleep
+  }
+
+  lane speed {
+    label = "Speed Thread"
+    wait_speed
+    inc_speed
+  }
+
+  lane flow {
+    label = "Flow Thread"
+    wait_flow
+    inc_flow
+  }
+}

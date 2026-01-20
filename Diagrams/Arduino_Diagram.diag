@@ -1,0 +1,113 @@
+actdiag {
+  setup_serial -> setup_simulator -> setup_lcd -> show_startup -> calc_freq -> print_config -> main_loop
+
+  main_loop -> sim_loop
+  main_loop -> auto_toggle
+  main_loop -> read_serial
+
+  sim_loop -> check_speed_freq
+  check_speed_freq -> toggle_speed [label = "freq > 0"]
+  check_speed_freq -> check_flow_freq [label = "freq = 0"]
+  toggle_speed -> check_flow_freq
+
+  check_flow_freq -> toggle_flow [label = "freq > 0"]
+  check_flow_freq -> check_button [label = "freq = 0"]
+  toggle_flow -> check_button
+
+  check_button -> release_button [label = "timer expired"]
+  check_button -> sim_done [label = "not expired"]
+  release_button -> sim_done
+
+  auto_toggle -> check_interval
+  check_interval -> trigger_button [label = "10s elapsed"]
+  check_interval -> toggle_done [label = "not elapsed"]
+  trigger_button -> toggle_done
+
+  read_serial -> check_data
+  check_data -> read_char [label = "available"]
+  check_data -> serial_done [label = "none"]
+  read_char -> check_newline
+  check_newline -> parse_cmd [label = "newline"]
+  check_newline -> serial_done [label = "buffering"]
+  parse_cmd -> update_display -> serial_done
+
+  sim_done -> main_loop
+  toggle_done -> main_loop
+  serial_done -> main_loop
+
+  setup_serial [label = "Init Serial 115200"]
+  setup_simulator [label = "Init Simulator"]
+  setup_lcd [label = "Init LCD"]
+  show_startup [label = "Display FUEL"]
+  calc_freq [label = "Calculate Frequencies"]
+  print_config [label = "Print Config"]
+  main_loop [label = "Main Loop"]
+
+  sim_loop [label = "Simulator Loop"]
+  check_speed_freq [label = "Speed Freq > 0?"]
+  toggle_speed [label = "Toggle Speed Pin"]
+  check_flow_freq [label = "Flow Freq > 0?"]
+  toggle_flow [label = "Toggle Flow Pin"]
+  check_button [label = "Button Timer?"]
+  release_button [label = "Release Button"]
+  sim_done [label = "Sim Done"]
+
+  auto_toggle [label = "Auto Toggle"]
+  check_interval [label = "10s Elapsed?"]
+  trigger_button [label = "Trigger Button"]
+  toggle_done [label = "Toggle Done"]
+
+  read_serial [label = "Read Serial"]
+  check_data [label = "Data Available?"]
+  read_char [label = "Read Character"]
+  check_newline [label = "Is Newline?"]
+  parse_cmd [label = "Parse Command"]
+  update_display [label = "Update LCD"]
+  serial_done [label = "Serial Done"]
+
+  lane setup {
+    label = "Setup"
+    setup_serial
+    setup_simulator
+    setup_lcd
+    show_startup
+    calc_freq
+    print_config
+  }
+
+  lane loop {
+    label = "Loop"
+    main_loop
+    sim_done
+    toggle_done
+    serial_done
+  }
+
+  lane simulator {
+    label = "Simulator"
+    sim_loop
+    check_speed_freq
+    toggle_speed
+    check_flow_freq
+    toggle_flow
+    check_button
+    release_button
+  }
+
+  lane button {
+    label = "Auto Toggle"
+    auto_toggle
+    check_interval
+    trigger_button
+  }
+
+  lane serial {
+    label = "Serial/Display"
+    read_serial
+    check_data
+    read_char
+    check_newline
+    parse_cmd
+    update_display
+  }
+}
