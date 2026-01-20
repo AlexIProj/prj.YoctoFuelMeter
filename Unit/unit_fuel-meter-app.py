@@ -1,7 +1,6 @@
 import unittest
 import ctypes
 import os
-import sys
 from datetime import datetime
 
 lib_path = os.path.abspath("libcalcs.so")
@@ -16,73 +15,53 @@ fuel_meter_lib.GetMetricConstant.restype = ctypes.c_double
 fuel_meter_lib.GetImperialConstant.argtypes = []
 fuel_meter_lib.GetImperialConstant.restype = ctypes.c_double
 
+METRIC_TO_IMPERIAL = 6.09202687
+
+
 class TestFuelMeterApp(unittest.TestCase):
-    def setUp(self):
-        self.k_metric = fuel_meter_lib.GetMetricConstant()
-        self.k_imperial = fuel_meter_lib.GetImperialConstant()
 
-        self.tolerance = 0.001
+    def test_zero_speed_returns_zero(self):
+        result = fuel_meter_lib.CalculateFuelConsumption(0, 100, 1)
+        self.assertEqual(result, 0.0)
 
-    def test_idle_zero_speed(self):
-        speed_hz = 0
-        flow_hz = 20
+    def test_max_consumption_capped(self):
+        result = fuel_meter_lib.CalculateFuelConsumption(10, 1000, 1)
+        self.assertEqual(result, 99.9)
 
-        actual_val= fuel_meter_lib.CalculateFuelConsumption(speed_hz, flow_hz, 1)
+    def test_metric_calculation(self):
+        # 155 speed pulses, 100 flow pulses -> ~20 L/100km
+        result = fuel_meter_lib.CalculateFuelConsumption(155, 100, 1)
+        self.assertAlmostEqual(result, 20.0, delta=0.5)
 
-        print(f"[IDLE ZERO SPEED] Input({speed_hz}, {flow_hz}) -> Metric C: {actual_val:.4f}")
+    def test_imperial_calculation(self):
+        result = fuel_meter_lib.CalculateFuelConsumption(155, 100, 0)
+        expected = 20.0 / METRIC_TO_IMPERIAL  # ~3.28 G/100mi
+        self.assertAlmostEqual(result, expected, delta=0.1)
 
-        self.assertEqual(actual_val, 0.0)
+    def test_metric_imperial_consistency(self):
+        test_cases = [(155, 100), (100, 50), (200, 100), (500, 100)]
 
-    def test_max_saturation(self):
-        speed_hz = 10
-        flow_hz = 1000
+        for speed, flow in test_cases:
+            metric = fuel_meter_lib.CalculateFuelConsumption(speed, flow, 1)
+            imperial = fuel_meter_lib.CalculateFuelConsumption(speed, flow, 0)
+            expected_imperial = metric / METRIC_TO_IMPERIAL
+            self.assertAlmostEqual(imperial, expected_imperial, delta=0.01,
+                msg=f"Inconsistent at ({speed}, {flow})")
 
-        actual_val= fuel_meter_lib.CalculateFuelConsumption(speed_hz, flow_hz, 1)
-
-        print(f"[MAX SATURATION] Input({speed_hz}, {flow_hz}) -> Metric C: {actual_val:.4f}")
-        self.assertAlmostEqual(actual_val, 99.9, 0.0)
-
-    def test_imperial_steady_state(self):
-        # Speed = 60 Mi/h -> 100Hz
-        # , Flow = 5 Gal/h -> 63Hz
-        # Fuel Consumption = (5 / 60) * 100 = 8.3333
-        speed_hz = 100
-        flow_hz = 63
-
-        actual_val = fuel_meter_lib.CalculateFuelConsumption(speed_hz, flow_hz, 0)
-        expected_val = (flow_hz / speed_hz) * self.k_imperial
-
-        print(f"[IMPERIAL] Input({speed_hz}, {flow_hz}) -> C: {actual_val:.4f} vs Py: {expected_val:.4f} (K={self.k_imperial:.2f})")
-
-        self.assertAlmostEqual(actual_val, expected_val, delta=self.tolerance)
-
-    def test_metric_steady_state(self):
-        # Speed = 100 Km/h -> 
-        # Flow = 9.9 L /h
-        # Fuel Consumption = (9.9 / 100) * 100 = 9.9 L/100Km
-        speed_hz = 100
-        flow_hz = 33
-
-        actual_val = fuel_meter_lib.CalculateFuelConsumption(speed_hz, flow_hz, 1)
-        expected_val = (flow_hz / speed_hz) * self.k_metric
-
-        print(f"[METRIC] Input({speed_hz}, {flow_hz}) -> C: {actual_val:.4f} vs Py: {expected_val:.4f} (K={self.k_metric:.2f})")
-        self.assertAlmostEqual(actual_val, expected_val, delta=self.tolerance)
-
-    def test_dynamic_metric_scenario(self):
-        print("\n[METRIC DYNAMIC SCENARIO]")
+    def test_constants_ratio(self):
+        metric_k = fuel_meter_lib.GetMetricConstant()
+        imperial_k = fuel_meter_lib.GetImperialConstant()
+        ratio = metric_k / imperial_k
+        self.assertAlmostEqual(ratio, METRIC_TO_IMPERIAL, delta=0.001)
 
 
 if __name__ == "__main__":
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-
     report_filename = f"TestReport_{timestamp}.txt"
-    full_report_path = os.path.join(script_dir, report_filename)
 
     print(f"Test running ... Test Report: {report_filename}\n")
 
-    with open  (report_filename, "w") as report_file:
+    with open(report_filename, "w") as report_file:
         report_file.write(f"Test Report - {timestamp}\n")
         report_file.write("Fuel Meter Application Unit Tests\n\n")
 
