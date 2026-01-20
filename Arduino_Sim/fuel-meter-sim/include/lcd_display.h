@@ -13,9 +13,6 @@ class DisplayLCD {
         void ShowChar(int digit, char c, bool dot);
         void Update(void);
 
-        #ifdef DEBUG_ENABLED
-        void TEST(void);
-        #endif
         void clear(void);
 
     private:

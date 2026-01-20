@@ -1,20 +1,11 @@
 #include "simulator.h"
 
-// Definim pinii hardcodat pentru siguranță (conform config.h-ul tau: PB0=8, PB1=9)
-#define PIN_SPEED_ARDUINO 9
-#define PIN_FLOW_ARDUINO  8
-#define PIN_BTN_ARDUINO   7
-
 FuelSimulator::FuelSimulator() {
     _target_speed_hz = 0;
     _target_flow_hz  = 0;
 
     _prev_micros_speed = 0;
     _prev_micros_flow  = 0;
-    
-    // Stări locale pentru pini (ca să știm dacă sunt HIGH sau LOW)
-    _state_speed = LOW;
-    _state_flow = LOW;
 
     _btn_start_time = 0;
     _btn_active = false;
@@ -23,70 +14,53 @@ FuelSimulator::FuelSimulator() {
 }
 
 void FuelSimulator::Setup(void) {
-    // Folosim funcțiile standard Arduino - sunt mult mai sigure
-    pinMode(PIN_SPEED_ARDUINO, OUTPUT);
-    pinMode(PIN_FLOW_ARDUINO, OUTPUT);
-    pinMode(PIN_BTN_ARDUINO, OUTPUT);
+    SIM_PORT_DDR |= (1 << PIN_SPEED_BIT) | (1 << PIN_FLOW_BIT);
+    BTN_PORT_DDR |= (1 << PIN_BTN_BIT);
 
-    digitalWrite(PIN_SPEED_ARDUINO, LOW);
-    digitalWrite(PIN_FLOW_ARDUINO, LOW);
-    // Butonul e activ pe HIGH in simularea ta, deci pornim pe LOW
-    digitalWrite(PIN_BTN_ARDUINO, LOW); 
+    SIM_PORT_OUT &= ~((1 << PIN_SPEED_BIT) | (1 << PIN_FLOW_BIT));
+    BTN_PORT_OUT &= ~(1 << PIN_BTN_BIT);
 }
 
 void FuelSimulator::Loop(void) {
     unsigned long currentMicros = micros();
 
-    // --- LOGICA PENTRU FLUX (PIN 8) ---
     if (_target_flow_hz > 0) {
-        // Perioada completă = 1000000 / Hz. Toggle trebuie făcut la jumătate.
         unsigned long interval_flow = 1000000UL / (_target_flow_hz * 2);
 
         if (currentMicros - _prev_micros_flow >= interval_flow) {
             _prev_micros_flow = currentMicros;
-            
-            // Inversăm starea (Toggle)
-            _state_flow = !_state_flow;
-            digitalWrite(PIN_FLOW_ARDUINO, _state_flow);
+            SIM_PORT_PIN = (1 << PIN_FLOW_BIT);
         }
     }
     else {
-        _state_flow = LOW;
-        digitalWrite(PIN_FLOW_ARDUINO, LOW);
+        SIM_PORT_OUT &= ~(1 << PIN_FLOW_BIT);
     }
 
-    // --- LOGICA PENTRU VITEZĂ (PIN 9) ---
     if (_target_speed_hz > 0) {
         unsigned long interval_speed = 1000000UL / (_target_speed_hz * 2);
 
         if (currentMicros - _prev_micros_speed >= interval_speed) {
             _prev_micros_speed = currentMicros;
-            
-            // Inversăm starea (Toggle)
-            _state_speed = !_state_speed;
-            digitalWrite(PIN_SPEED_ARDUINO, _state_speed);
+            SIM_PORT_PIN = (1 << PIN_SPEED_BIT);
         }
     }
     else {
-        _state_speed = LOW;
-        digitalWrite(PIN_SPEED_ARDUINO, LOW);
+        SIM_PORT_OUT &= ~(1 << PIN_SPEED_BIT);
     }
 
-    // --- LOGICA PENTRU BUTON (PIN 7) ---
-    if (_btn_active && (millis() - _btn_start_time > 200)){
-        digitalWrite(PIN_BTN_ARDUINO, LOW);
+    if (_btn_active && (millis() - _btn_start_time > 200)) {
+        BTN_PORT_OUT &= ~(1 << PIN_BTN_BIT);  // Set LOW
         _btn_active = false;
     }
 }
 
 void FuelSimulator::TriggerButton(void) {
-    digitalWrite(PIN_BTN_ARDUINO, HIGH);
+    BTN_PORT_OUT |= (1 << PIN_BTN_BIT);  // Set HIGH
     _btn_start_time = millis();
     _btn_active = true;
 }
 
 void FuelSimulator::ParseCommand(String cmd) {
-    // Adaugă un debug pe Serial să fim siguri că primește comanda
     Serial.print("CMD RECEIVED: ");
     Serial.println(cmd);
 

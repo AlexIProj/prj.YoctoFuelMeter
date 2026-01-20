@@ -169,7 +169,6 @@ void DisplayLCD::Update(void){
 }
 
 void DisplayLCD::ShowChar(int digit, char c, bool dot) {
-    // Clear all segments (A-G and P) before setting new pattern
     _digitState[digit] = 0;
 
     uint8_t pattern = 0;
@@ -215,11 +214,5 @@ void DisplayLCD::ShowChar(int digit, char c, bool dot) {
 
 void DisplayLCD::clear(void){
     memset(_digitState, 0, 4);
-    Update();
-}
-
-void DisplayLCD::TEST(void){
-    for(int i = 0; i < 4; i++)
-        _digitState[i] = 0xFF;
     Update();
 }
